@@ -22,6 +22,8 @@ namespace zm {
         CallType call_type;
         uint8_t arity;
         std::stack<word> routine_stack;
+        bool store_on_return;
+        uint8_t store_to;
     };
 
     class CallStack {

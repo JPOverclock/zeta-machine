@@ -1,12 +1,12 @@
 #include "machine.h"
 #include "memory.h"
+#include "header.h"
 #include "call_stack.h"
 #include "instructions.h"
 
 #include <iostream>
 #include <vector>
 
-#include <ctime>
 #include <ratio>
 #include <chrono>
 
@@ -49,6 +49,23 @@ constexpr uint32_t packed_address(uint16_t address, uint8_t version, uint16_t of
     return result;
 }
 
+uint32_t reify_operand(const Operand &operand, zm::CallStack &stack, zm::Memory &memory) {
+    switch (operand.type) {
+        case OperandType::VARIABLE_NUMBER :
+            if (operand.value == 0x00) { // Top of stack
+                return stack.get_frame().routine_stack.top();
+            } else if (operand.value <= 0x0F) {
+                return stack.get_frame().variables[operand.value - 1];
+            } else {
+                auto global_variables_address = zm::Header(memory).global_variables_address();
+                return memory.read_word(global_variables_address + ((operand.value - 0x10) << 1));
+            }
+        case OperandType::WORD : return memory.read_word(operand.value);
+        case OperandType::BYTE : return memory.read_byte(operand.value);
+        default: return 0x0;
+    }
+}
+
 std::string operand_type_to_string(OperandType type) {
     switch (type) {
         case OperandType::BYTE : return "BYTE";
@@ -56,6 +73,7 @@ std::string operand_type_to_string(OperandType type) {
         case OperandType::VARIABLE_NUMBER : return "VARIABLE";
         case OperandType::STORE : return "<<STORE>>";
         case OperandType::BRANCH : return "<<BRANCH>>";
+        case OperandType::OMITTED : return "--OMITTED--";
     }
 }
 
@@ -221,11 +239,19 @@ void zm::Machine::run(std::string path) {
     call_stack.push(memory.read_word(0x06));
 
     bool quit = false;
+
+    bool process_return_value = false;
+    uint32_t return_value;
+
     while (!quit) {
         // Process interrupts and continue if any are handled
         /*if (process_interrupts()) {
             continue;
         }*/
+        uint8_t store_variable;
+        bool branch_on_true;
+        int16_t branch_offset;
+
         auto t1 = std::chrono::high_resolution_clock::now();
 
         // ------ Read instruction ------
@@ -295,17 +321,22 @@ void zm::Machine::run(std::string path) {
         }
 
         if (instruction.store) {
-            operands.push_back(Operand { OperandType::STORE, memory.read_byte(cursor++) });
+            store_variable = memory.read_byte(cursor++);
         }
 
         if (instruction.branch) {
             uint16_t operand = memory.read_byte(cursor++);
 
+            branch_on_true = !(operand & 0x0080);
+
             if (!(operand & 0x0040)) { // Need to read next byte
                 operand = (operand << 8) | memory.read_byte(cursor++);
-            }
+                branch_offset = operand & 0x3FFF;
+                branch_offset = (branch_offset & 0x2000) ? (branch_offset | 0xE0000) : branch_offset;
 
-            operands.push_back(Operand { OperandType::BRANCH, operand });
+            } else {
+                branch_offset = operand & 0x3F;
+            }
         }
 
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -359,8 +390,12 @@ void zm::Machine::run(std::string path) {
                 call_stack.get_frame().variables[i++] = iter->value;
             }
 
-            // Get store value
-            Operand store = operands.end().operator*();
+            // Set store point, if available
+            if (instruction.store) {
+                call_stack.get_frame().store_on_return = true;
+                call_stack.get_frame().store_to = store_variable;
+            }
+
         } else if (instruction.mnemonic == Mnemonic::CALL_2S) {
             Operand address = operands[0];
 
@@ -385,10 +420,37 @@ void zm::Machine::run(std::string path) {
             // Initialize local variables from operands
             call_stack.get_frame().variables[0] = operands[1].value;
 
-            // Get store value
-            Operand store = operands.end().operator*();
+            // Set store point, if available
+            if (instruction.store) {
+                call_stack.get_frame().store_on_return = true;
+                call_stack.get_frame().store_to = store_variable;
+            }
+
         } else if (instruction.mnemonic == Mnemonic::RET) {
+            // Reify operand
+            process_return_value = true;
+            return_value = reify_operand(operands[0], call_stack, memory);
+
+            // Pop stack frame
             call_stack.pop();
+            cursor = call_stack.get_frame().program_counter;
+        }
+
+        if (instruction.store) {
+            // Store value in variable
+            if (store_variable == 0x00) {
+                call_stack.get_frame().routine_stack.push(return_value);
+            } else if (store_variable <= 0x0F) {
+                // Set local variable
+                call_stack.get_frame().variables[store_variable - 1] = return_value;
+            } else {
+                // Set global variable
+                memory.write_word(global_variables_address + ((store_variable - 0x10) << 1), return_value);
+            }
+        }
+
+        if (instruction.branch) {
+            // Execute branching logic
         }
 
         // Set program counter

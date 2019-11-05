@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include "machine.h"
 
 int main() {
