@@ -1,6 +1,6 @@
 #include "machine.h"
-#include "memory.h"
-#include "header.h"
+#include "memory/memory.h"
+#include "memory/header.h"
 #include "call_stack.h"
 #include "instructions.h"
 
@@ -221,6 +221,12 @@ void debug(const zm::Instruction &instruction, const std::vector<Operand> &opera
     }
 }
 
+// Actual instruction handlers
+uint32_t call(const std::vector<Operand> operands) {
+
+}
+
+// RUN!
 void zm::Machine::run(std::string path) {
     zm::Memory memory{ 1000000 }; // Almost 1 MB... we got space :)
     zm::CallStack call_stack {};
