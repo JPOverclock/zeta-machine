@@ -3,7 +3,7 @@
 #include "memory/header.h"
 #include "call_stack.h"
 #include "instructions.h"
-#include "object_mapper.h"
+#include "memory/object_mapper.h"
 
 #include <iostream>
 #include <vector>
