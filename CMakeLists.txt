@@ -24,4 +24,4 @@ endif()
 
 add_subdirectory(extern/spdlog)
 
-add_executable(zetamachine src/main.cpp src/random_number_generator.cpp src/random_number_generator.h src/memory.cpp src/memory.h src/video.cpp src/video.h src/timer.cpp src/timer.h src/machine.cpp src/machine.h src/call_stack.cpp src/call_stack.h src/instructions.h src/processor.cpp src/processor.h src/header.cpp src/header.h src/object_mapper.cpp src/object_mapper.h)
+add_executable(zetamachine src/main.cpp src/random_number_generator.cpp src/random_number_generator.h src/memory/memory.cpp src/memory/memory.h src/video.cpp src/video.h src/timer.cpp src/timer.h src/machine.cpp src/machine.h src/call_stack.cpp src/call_stack.h src/instructions.h src/processor.cpp src/processor.h src/memory/header.cpp src/memory/header.h src/object_mapper.cpp src/object_mapper.h)

@@ -1,5 +1,6 @@
 #include "call_stack.h"
 
+
 void zm::CallStack::push(zm::address program_counter) {
     frames.emplace(StackFrame { program_counter });
 }
