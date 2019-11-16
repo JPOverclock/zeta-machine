@@ -3,11 +3,11 @@
 #include "header.h"
 #include "call_stack.h"
 #include "instructions.h"
+#include "object_mapper.h"
 
 #include <iostream>
 #include <vector>
 
-#include <ratio>
 #include <chrono>
 
 enum class OperandType {
@@ -242,6 +242,9 @@ void zm::Machine::run(std::string path) {
 
     bool process_return_value = false;
     uint32_t return_value;
+
+    // Debug objects
+    ObjectMapper { memory }.print_object_table();
 
     while (!quit) {
         // Process interrupts and continue if any are handled
