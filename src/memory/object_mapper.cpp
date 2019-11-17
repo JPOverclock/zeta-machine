@@ -1,10 +1,11 @@
 #include "object_mapper.h"
 #include "memory.h"
+#include "zchar_mapper.h"
 
 #include <iostream>
 
 zm::ObjectV5 zm::ObjectMapper::map_object(uint16_t number) {
-    uint32_t object_address = base_address + DEFAULT_PROPERTY_TABLE_SIZE + (number * OBJECT_V5_SIZE);
+    uint32_t object_address = base_address + DEFAULT_PROPERTY_TABLE_SIZE + ((number - 1) * OBJECT_V5_SIZE);
 
     return {
         memory.read_double_word(object_address),
@@ -22,7 +23,7 @@ zm::ObjectMapper::ObjectMapper(zm::Memory &memory) : memory(memory) {
 }
 
 bool zm::ObjectMapper::test_attribute(uint16_t object, uint8_t attribute) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     /*
      * The general rule for retrieving a numbered attribute is to
@@ -45,7 +46,7 @@ bool zm::ObjectMapper::test_attribute(uint16_t object, uint8_t attribute) {
 }
 
 void zm::ObjectMapper::set_attribute(uint16_t object, uint8_t attribute) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     if (attribute > 31) {
         obj.attributes_bottom |= (0x8000 >> (attribute - 32));
@@ -57,7 +58,7 @@ void zm::ObjectMapper::set_attribute(uint16_t object, uint8_t attribute) {
 }
 
 void zm::ObjectMapper::clear_attribute(uint16_t object, uint8_t attribute) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     if (attribute > 31) {
         obj.attributes_bottom &= (~(0x8000 >> (attribute - 32)));
@@ -69,8 +70,8 @@ void zm::ObjectMapper::clear_attribute(uint16_t object, uint8_t attribute) {
 }
 
 void zm::ObjectMapper::insert_object(uint16_t source_object, uint16_t destination_object) {
-    auto source = map_object(source_object - 1);
-    auto destination = map_object(destination_object - 1);
+    auto source = map_object(source_object);
+    auto destination = map_object(destination_object);
 
     if (source.parent != 0) {
         auto parent = map_object(source.parent);
@@ -138,7 +139,7 @@ PropertyPointer compute_property_location(uint32_t property_address, uint16_t pr
 }
 
 uint16_t zm::ObjectMapper::get_property(uint16_t object, uint16_t property) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     // Jump to property table
     uint16_t object_description_length = memory.read_byte(obj.properties);
@@ -152,7 +153,7 @@ uint16_t zm::ObjectMapper::get_property(uint16_t object, uint16_t property) {
 }
 
 uint16_t zm::ObjectMapper::get_property_address(uint16_t object, uint16_t property) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     // Jump to property table
     uint16_t object_description_length = memory.read_byte(obj.properties);
@@ -162,7 +163,7 @@ uint16_t zm::ObjectMapper::get_property_address(uint16_t object, uint16_t proper
 }
 
 uint16_t zm::ObjectMapper::get_next_property(uint16_t object, uint16_t property) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     uint16_t object_description_length = memory.read_byte(obj.properties);
     auto property_list_address = obj.properties + ((object_description_length << 1) + 1);
@@ -193,25 +194,25 @@ uint16_t zm::ObjectMapper::get_property_length(uint16_t property_address) {
 }
 
 uint16_t zm::ObjectMapper::get_parent(uint16_t object) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     return obj.parent;
 }
 
 uint16_t zm::ObjectMapper::get_sibling(uint16_t object) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     return obj.sibling;
 }
 
 uint16_t zm::ObjectMapper::get_child(uint16_t object) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     return obj.child;
 }
 
 void zm::ObjectMapper::remove_object(uint16_t object) {
-    auto obj = map_object(object - 1);
+    auto obj = map_object(object);
 
     if (obj.parent != 0) {
         auto parent = map_object(obj.parent);
@@ -228,6 +229,8 @@ void zm::ObjectMapper::remove_object(uint16_t object) {
 }
 
 void zm::ObjectMapper::print_object_table() {
+    ZCharMapper char_mapper(memory);
+
     // Print property defaults
     std::cout << "Property defaults:" << std::endl;
     for (int i = 0; i < 63; i++) {
@@ -237,7 +240,7 @@ void zm::ObjectMapper::print_object_table() {
     // Compute number of objects
     int object_count = 99999999;
 
-    for (int object_id = 0; object_id < object_count; object_id++) {
+    for (int object_id = 1; object_id <= object_count; object_id++) {
         auto object = map_object(object_id);
 
         /*
@@ -246,7 +249,7 @@ void zm::ObjectMapper::print_object_table() {
          * table divided by the size of an object
          */
         uint16_t properties_address = object.properties;
-        uint16_t offset = properties_address - (memory.read_word(base_address) + DEFAULT_PROPERTY_TABLE_SIZE);
+        uint16_t offset = properties_address - (base_address + DEFAULT_PROPERTY_TABLE_SIZE);
 
         auto pseudo_count = offset / OBJECT_V5_SIZE;
 
@@ -256,7 +259,7 @@ void zm::ObjectMapper::print_object_table() {
         }
 
         // Print object ID
-        std::cout << object_id + 1 << ".";
+        std::cout << object_id << ".";
 
         // Print attributes
         std::cout << "\tAttributes: ";
@@ -265,7 +268,7 @@ void zm::ObjectMapper::print_object_table() {
             std::cout << "None";
         } else {
             for (int attribute = 0; attribute < 48; attribute++) {
-                if (test_attribute(object_id + 1, attribute)) {
+                if (test_attribute(object_id, attribute)) {
                     std::cout << attribute << ", ";
                 }
             }
@@ -279,14 +282,21 @@ void zm::ObjectMapper::print_object_table() {
         // Print property address
         std::cout << "\tProperty address: " << std::hex << object.properties << std::dec << std::endl;
 
+        // Print object description
+        uint8_t description_size = memory.read_byte(object.properties);
+
+        std::cout << "\t\tDescription:\t";
+        std::cout << char_mapper.map(object.properties + 1, description_size);
+        std::cout << std::endl;
+
         // Print each property on the list, until \0 is found
         uint16_t property = 0;
 
         std::cout << "\t\tProperties:" << std::endl;
-        while((property = get_next_property(object_id + 1, property)) != 0) {
+        while((property = get_next_property(object_id, property)) != 0) {
             std::cout << "\t\t\t[" << property << "]";
 
-            uint16_t property_address = get_property_address(object_id + 1, property);
+            uint16_t property_address = get_property_address(object_id, property);
             uint16_t property_length = get_property_length(property_address);
 
             for (int i = 0; i < property_length; i++) {

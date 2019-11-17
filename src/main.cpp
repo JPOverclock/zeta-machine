@@ -3,6 +3,6 @@
 int main() {
     zm::Machine machine {};
 
-    machine.run("/home/jpoverclock/Downloads/planetfall.z5");
+    machine.run("../resources/stories/v5/Planetfall R10-880531.z5");
     return 0;
 }
