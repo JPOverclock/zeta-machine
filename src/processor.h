@@ -39,9 +39,9 @@ namespace zm {
         uint16_t call_1n(uint16_t routine);
         uint16_t call_2s(uint16_t routine, uint16_t arg);
         uint16_t call_2n(uint16_t routine, uint16_t arg);
-        uint16_t call(uint16_t arg_count, uint16_t args[arg_count]);
-        uint16_t call_vs(uint16_t arg_count, uint16_t args[arg_count]);
-        uint16_t call_vs2(uint16_t arg_count, uint16_t args[arg_count]);
+        uint16_t call(uint16_t arg_count, uint16_t args[]);
+        uint16_t call_vs(uint16_t arg_count, uint16_t args[]);
+        uint16_t call_vs2(uint16_t arg_count, uint16_t args[]);
 
         // Storage operations
         uint16_t load(uint16_t variable);
