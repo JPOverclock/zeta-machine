@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <cstring>
 
 void zm::Memory::load(std::string path) {
     // Load file into memory
@@ -14,4 +15,8 @@ void zm::Memory::load(std::string path) {
     } else {
         std::cerr << "Loading failed!" << std::endl;
     }
+}
+
+void zm::Memory::read_array(uint32_t source_address, uint32_t length, uint8_t *array) {
+    memcpy(array, contents + source_address, length);
 }

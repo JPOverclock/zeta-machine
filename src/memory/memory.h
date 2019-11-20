@@ -18,6 +18,8 @@ namespace zm {
             return contents[address] << 24 | contents[address + 1] << 16 | contents[address + 2] << 8 | contents[address + 3];
         }
 
+        void read_array(uint32_t source_address, uint32_t length, uint8_t *array);
+
         bool read_bit(uint32_t address, uint8_t position) { return ((read(address) >> position) & 0x1) != 0; }
         void write_bit(uint32_t address, uint8_t position) { }
 

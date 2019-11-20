@@ -3,6 +3,6 @@
 int main() {
     zm::Machine machine {};
 
-    machine.run("/home/jpoverclock/Desktop/Planetfall R10-880531.z5");
+    machine.run("");
     return 0;
 }
