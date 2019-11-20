@@ -18,6 +18,8 @@ enum class CharMode {
     ABBREV_1,
     ABBREV_2,
     ABBREV_3,
+    DOUBLE_TOP,
+    DOUBLE_BOTTOM
 };
 
 zm::ZCharMapper::ZCharMapper(zm::Memory &memory) : memory(memory) {
@@ -41,6 +43,8 @@ std::string zm::ZCharMapper::map(uint32_t address, uint32_t length) {
         uint8_t third_char = (raw & 0b0000000000011111);
 
         uint8_t chars[3] = { first_char, second_char, third_char };
+
+        char double_character;
 
         for (int j = 0; j < 3; j++) {
             uint8_t code = chars[j];
@@ -74,8 +78,18 @@ std::string zm::ZCharMapper::map(uint32_t address, uint32_t length) {
                         case 3 : mode = CharMode::ABBREV_3; break;
                         case 4 : mode = CharMode::SHIFT; break;
                         case 5 : mode = CharMode::SPECIAL; break;
+                        case 6 : mode = CharMode::DOUBLE_TOP; break;
                         default : final << alphabet[2][code]; mode = CharMode::NORMAL;
                     } break;
+                case CharMode::DOUBLE_TOP :
+                    double_character = code & 0b00000111;
+                    mode = CharMode::DOUBLE_BOTTOM;
+                    break;
+                case CharMode::DOUBLE_BOTTOM :
+                    double_character = ((double_character << 5) & (code & 0b00011111));
+                    final << double_character;
+                    mode = CharMode::NORMAL;
+                    break;
             }
         }
     }

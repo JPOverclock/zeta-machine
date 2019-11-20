@@ -1,9 +1,13 @@
+#include "spdlog/spdlog.h"
+
 #include "machine.h"
-#include "memory/memory.h"
-#include "memory/header.h"
 #include "call_stack.h"
 #include "instructions.h"
+
+#include "memory/memory.h"
+#include "memory/header.h"
 #include "memory/object_mapper.h"
+#include "memory/zchar_mapper.h"
 
 #include <iostream>
 #include <vector>
@@ -77,13 +81,13 @@ std::string operand_type_to_string(OperandType type) {
     }
 }
 
-void debug(const zm::Instruction &instruction, const std::vector<Operand> &operands, zm::CallStack &stack) {
-    std::cout << "PC = " << std::hex << stack.get_frame().program_counter << std::endl;
+void debug(const zm::Instruction &instruction, const std::vector<Operand> &operands, zm::CallStack &stack, uint32_t initial_pc) {
+    std::cout << "PC = " << std::hex << initial_pc << std::dec << std::endl;
     std::cout << "Variables: " << std::endl;
 
     // Print variables
     for (int i = 0; i < stack.get_frame().arity; i++) {
-        std::cout << "\t" << "[" << i << "] = " << std::hex << stack.get_frame().variables[i] << std::endl;
+        std::cout << "\t" << "[" << i << "] = " << std::hex << stack.get_frame().variables[i] << std::dec << std::endl;
     }
 
     // Print instruction
@@ -259,20 +263,21 @@ void zm::Machine::run(std::string path) {
         }*/
         uint8_t store_variable;
         bool branch_on_true;
+        bool should_branch = false;
         int16_t branch_offset;
+
+        auto initial_pc = call_stack.get_frame().program_counter;
 
         auto t1 = std::chrono::high_resolution_clock::now();
 
         // ------ Read instruction ------
-        uint32_t cursor = call_stack.get_frame().program_counter;
-
-        uint8_t opcode = memory.read_byte(cursor++);
+        uint8_t opcode = memory.read_byte(call_stack.get_frame().program_counter++);
         std::vector<Operand> operands;
         zm::Instruction instruction;
 
         // Figure out what kind of instruction this is...
         if (opcode == 0xBE) {
-            opcode = memory.read_byte(cursor++);
+            opcode = memory.read_byte(call_stack.get_frame().program_counter++);
             instruction = instruction_set.get_ext(opcode);
         } else {
             instruction = instruction_set.get(opcode);
@@ -283,18 +288,18 @@ void zm::Machine::run(std::string path) {
             auto operand_1_type = instruction.value & 0x40 ? OperandType::VARIABLE_NUMBER : OperandType::BYTE;
             auto operand_2_type = instruction.value & 0x20 ? OperandType::VARIABLE_NUMBER : OperandType::BYTE;
 
-            operands.push_back(Operand { operand_1_type, memory.read_byte(cursor++) });
-            operands.push_back(Operand { operand_2_type, memory.read_byte(cursor++) });
+            operands.push_back(Operand { operand_1_type, memory.read_byte(call_stack.get_frame().program_counter++) });
+            operands.push_back(Operand { operand_2_type, memory.read_byte(call_stack.get_frame().program_counter++) });
 
         } else if (instruction.opcode_type == OpcodeType::OP1) {
             switch (instruction.value & 0x30) {
                 case (0x30) : break;
-                case (0x10) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(cursor++) }); break;
-                case (0x20) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(cursor++) }); break;
-                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(cursor) }); cursor += 2; break;
+                case (0x10) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x20) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(call_stack.get_frame().program_counter) }); call_stack.get_frame().program_counter += 2; break;
             }
         } else if (instruction.opcode_type == OpcodeType::VAR) {
-            auto operand_definition = memory.read_byte(cursor++);
+            auto operand_definition = memory.read_byte(call_stack.get_frame().program_counter++);
             auto o1 = operand_definition >> 6;
             auto o2 = operand_definition >> 4;
             auto o3 = operand_definition >> 2;
@@ -302,44 +307,44 @@ void zm::Machine::run(std::string path) {
 
             switch (o1 & 0x03) {
                 case (0x03) : break;
-                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(cursor++) }); break;
-                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(cursor++) }); break;
-                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(cursor) }); cursor += 2; break;
+                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(call_stack.get_frame().program_counter) }); call_stack.get_frame().program_counter += 2; break;
             }
 
             switch (o2 & 0x03) {
                 case (0x03) : break;
-                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(cursor++) }); break;
-                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(cursor++) }); break;
-                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(cursor) }); cursor += 2; break;
+                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(call_stack.get_frame().program_counter) }); call_stack.get_frame().program_counter += 2; break;
             }
 
             switch (o3 & 0x03) {
                 case (0x03) : break;
-                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(cursor++) }); break;
-                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(cursor++) }); break;
-                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(cursor) }); cursor += 2; break;
+                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(call_stack.get_frame().program_counter) }); call_stack.get_frame().program_counter += 2; break;
             }
 
             switch (o4 & 0x03) {
                 case (0x03) : break;
-                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(cursor++) }); break;
-                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(cursor++) }); break;
-                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(cursor) }); cursor += 2; break;
+                case (0x01) : operands.push_back(Operand { OperandType::BYTE, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x02) : operands.push_back(Operand { OperandType::VARIABLE_NUMBER, memory.read_byte(call_stack.get_frame().program_counter++) }); break;
+                case (0x00) : operands.push_back(Operand { OperandType::WORD, memory.read_word(call_stack.get_frame().program_counter) }); call_stack.get_frame().program_counter += 2; break;
             }
         }
 
         if (instruction.store) {
-            store_variable = memory.read_byte(cursor++);
+            store_variable = memory.read_byte(call_stack.get_frame().program_counter++);
         }
 
         if (instruction.branch) {
-            uint16_t operand = memory.read_byte(cursor++);
+            uint16_t operand = memory.read_byte(call_stack.get_frame().program_counter++);
 
             branch_on_true = !(operand & 0x0080);
 
             if (!(operand & 0x0040)) { // Need to read next byte
-                operand = (operand << 8) | memory.read_byte(cursor++);
+                operand = (operand << 8) | memory.read_byte(call_stack.get_frame().program_counter++);
                 branch_offset = operand & 0x3FFF;
                 branch_offset = (branch_offset & 0x2000) ? (branch_offset | 0xE0000) : branch_offset;
 
@@ -353,7 +358,7 @@ void zm::Machine::run(std::string path) {
 
         std::cout << "Instruction decode took " << std::dec << time_span << " ns." << std::endl;
 
-        debug(instruction, operands, call_stack);
+        debug(instruction, operands, call_stack, initial_pc);
 
         // Process instruction
         if (instruction.mnemonic == Mnemonic::LOADB) {
@@ -377,19 +382,18 @@ void zm::Machine::run(std::string path) {
 
             // Push a new stack frame with the address to jump to
             call_stack.push(packed_address(address.value, version, 0x00));
-            cursor = call_stack.get_frame().program_counter;
 
             // Read number of arguments
-            uint8_t n_args = memory.read(cursor++);
+            uint8_t n_args = memory.read(call_stack.get_frame().program_counter++);
             call_stack.get_frame().arity = n_args;
 
             // Read n words and initialize variables
             if (version < 5) {
                 for (int i = 0; i < n_args; ++i) {
-                    uint16_t value = memory.read_word(cursor);
+                    uint16_t value = memory.read_word(call_stack.get_frame().program_counter);
 
                     call_stack.get_frame().variables[i] = value;
-                    cursor += 2;
+                    call_stack.get_frame().program_counter += 2;
                 }
             }
 
@@ -410,19 +414,18 @@ void zm::Machine::run(std::string path) {
 
             // Push a new stack frame with the address to jump to
             call_stack.push(packed_address(address.value, version, 0x00));
-            cursor = call_stack.get_frame().program_counter;
 
             // Read number of arguments
-            uint8_t n_args = memory.read(cursor++);
+            uint8_t n_args = memory.read(call_stack.get_frame().program_counter++);
             call_stack.get_frame().arity = n_args;
 
             // Read n words and initialize variables
             if (version < 5) {
                 for (int i = 0; i < n_args; ++i) {
-                    uint16_t value = memory.read_word(cursor);
+                    uint16_t value = memory.read_word(call_stack.get_frame().program_counter);
 
                     call_stack.get_frame().variables[i] = value;
-                    cursor += 2;
+                    call_stack.get_frame().program_counter += 2;
                 }
             }
 
@@ -442,7 +445,13 @@ void zm::Machine::run(std::string path) {
 
             // Pop stack frame
             call_stack.pop();
-            cursor = call_stack.get_frame().program_counter;
+        } else if (instruction.mnemonic == Mnemonic::PRINT) {
+            zm::ZCharMapper char_mapper{ memory };
+
+            auto length = char_mapper.word_len(call_stack.get_frame().program_counter);
+            auto string = char_mapper.map(call_stack.get_frame().program_counter, length);
+
+            call_stack.get_frame().program_counter += (length << 1);
         }
 
         if (instruction.store) {
@@ -458,12 +467,16 @@ void zm::Machine::run(std::string path) {
             }
         }
 
-        if (instruction.branch) {
-            // Execute branching logic
+        if (instruction.branch && should_branch) {
+            /*
+             * Instructions which test a condition are called "branch" instructions.
+             * The branch information is stored in one or two bytes, indicating what to do with the result of the test.
+             * If bit 7 of the first byte is 0, a branch occurs when the condition was false; if 1, then branch is on true.
+             * If bit 6 is set, then the branch occupies 1 byte only, and the "offset" is in the range 0 to 63, given in the bottom 6 bits.
+             * If bit 6 is clear, then the offset is a signed 14-bit number given in bits 0 to 5 of the first byte followed by all 8 of the second.
+             */
+            call_stack.get_frame().program_counter += (branch_offset - 2);
         }
-
-        // Set program counter
-        call_stack.get_frame().program_counter = cursor;
 
         std::cout << "Cycle done" << std::endl;
     }
